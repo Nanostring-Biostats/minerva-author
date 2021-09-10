@@ -233,7 +233,7 @@ class Opener:
 
     def get_level_tiles(self, level, tile_size):
         if self.reader == 'tifffile':
-
+            
             # Negative indexing to support shape len 3 or len 2
             ny = int(np.ceil(self.group[level].shape[-2] / tile_size))
             nx = int(np.ceil(self.group[level].shape[-1] / tile_size))
@@ -335,48 +335,80 @@ class Opener:
             img = self.dz.get_tile(reverse_level, (tx, ty))
             return img
 
-    def generate_mask_tiles(self, filename, mask_params, tile_size, level, tx, ty, should_skip_tiles={}):
+    def generate_mask_tiles(self, filename, mask_params, tile_size, level, tx, ty, mask_colors_by_index=None, should_skip_tiles={}):
         num_channels = self.get_shape()[0]
         tile = self.get_tifffile_tile(num_channels, level, tx, ty, 0, tile_size)
-
+        
         for image_params in mask_params['images']:
-
             output_file = str(image_params['out_path'] / filename)
             if should_skip_tiles.get(output_file, False):
                 continue
 
             target = np.zeros(tile.shape + (4,), np.uint8)
             skip_empty_tile = True
+            if mask_colors_by_index:
+                for channel in image_params['settings']['channels']:
+                    ids = channel['ids']
 
-            for channel in image_params['settings']['channels']:
-                rgba_color = [int(255 * i) for i in (colors.to_rgba(channel['color'], channel['opacity']))]
-                ids = channel['ids']
-
-                if len(ids) > 0:
-                    bool_tile = np.isin(tile, ids)
-                    # Signal that we must actually save the image
-                    if not skip_empty_tile or np.any(bool_tile):
+                    if len(ids) > 0:
+                        bool_tile = np.isin(tile, ids)
+                        # Signal that we must actually save the image
+                        if not skip_empty_tile or np.any(bool_tile):
+                            skip_empty_tile = False
+                            target[bool_tile] = mask_colors_by_index[ids[0]]
+                    else:
+                        # Handle masks that color cells individually
+                        print('filename: ', filename)
+                        for i in range(len(mask_colors_by_index) - 2):
+                            bool_tile = np.isin(tile, i + 1)
+                            if np.any(bool_tile):
+                                target[bool_tile] = mask_colors_by_index[i+1]
                         skip_empty_tile = False
-                        target[bool_tile] = rgba_color
+
+                if skip_empty_tile:
+                    empty_file = get_empty_path(output_file)
+                    yield {
+                        'img': None,
+                        'empty_file': empty_file
+                    }
                 else:
-                    # Handle masks that color cells individually
-                    target = colorize_mask(target, tile, channel['opacity'])
-                    skip_empty_tile = False
-
-            if skip_empty_tile:
-                empty_file = get_empty_path(output_file)
-                yield {
-                    'img': None,
-                    'empty_file': empty_file
-                }
+                    print('ids: ', ids, 'target: ', target)
+                    img = Image.frombytes('RGBA', target.T.shape[1:], target.tobytes())
+                    yield {
+                        'img': img,
+                        'output_file': output_file
+                    }
+            # old version - consider deleting if new version works
             else:
-                img = Image.frombytes('RGBA', target.T.shape[1:], target.tobytes())
-                yield {
-                    'img': img,
-                    'output_file': output_file
-                }
+                for channel in image_params['settings']['channels']:
+                    rgba_color = [int(255 * i) for i in (colors.to_rgba(channel['color'], channel['opacity']))]
+                    ids = channel['ids']
 
-    def save_mask_tiles(self, filename, mask_params, logger, tile_size, level, tx, ty):
+                    if len(ids) > 0:
+                        bool_tile = np.isin(tile, ids)
+                        # Signal that we must actually save the image
+                        if not skip_empty_tile or np.any(bool_tile):
+                            skip_empty_tile = False
+                            target[bool_tile] = rgba_color
+                    else:
+                        # Handle masks that color cells individually
+                        target = colorize_mask(target, tile, channel['opacity'])
+                        skip_empty_tile = False
+
+                if skip_empty_tile:
+                    empty_file = get_empty_path(output_file)
+                    yield {
+                        'img': None,
+                        'empty_file': empty_file
+                    }
+                else:
+                    img = Image.frombytes('RGBA', target.T.shape[1:], target.tobytes())
+                    yield {
+                        'img': img,
+                        'output_file': output_file
+                    }
+
+    def save_mask_tiles(self, filename, mask_params, logger, tile_size, level, tx, ty, mask_colors_by_index):
 
         should_skip_tiles = {}
 
@@ -394,7 +426,7 @@ class Opener:
 
         if self.reader == 'tifffile':
             mask_tiles = self.generate_mask_tiles(
-                filename, mask_params, tile_size, level, tx, ty, should_skip_tiles
+                filename, mask_params, tile_size, level, tx, ty, mask_colors_by_index, should_skip_tiles
             )
 
             for mask_tile in mask_tiles:
@@ -1391,6 +1423,7 @@ def api_render(session):
 
         # Render all uint32 segmentation masks
         for mask_params in mask_config_rows:
+            print('mask_params: ', mask_params)
             render_u32_tiles(mask_params, 1024, G['logger'])
 
         return 'OK'

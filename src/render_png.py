@@ -6,6 +6,7 @@ import json
 import os
 import io
 from threading import Lock
+from matplotlib import colors
 
 tiff_lock = Lock()
 
@@ -113,6 +114,13 @@ def render_u32_tiles(mask_params, tile_size, logger):
     if num_levels < 2:
         logger.warning(f'Number of levels {num_levels} < 2')
 
+    mask_colors_by_index = []
+    for image_params in mask_params['images']:
+         for channel in image_params['settings']['channels']:
+                rgba_color = [int(255 * i) for i in (colors.to_rgba(channel['color'], channel['opacity']))]
+                mask_colors_by_index.append(rgba_color)
+                
+
     for level in range(num_levels):
 
         (nx, ny) = opener.get_level_tiles(level, tile_size)
@@ -123,7 +131,7 @@ def render_u32_tiles(mask_params, tile_size, logger):
             filename = '{}_{}_{}.{}'.format(level, tx, ty, EXT)
 
             try:
-                opener.save_mask_tiles(filename, mask_params, logger, tile_size, level, tx, ty)
+                opener.save_mask_tiles(filename, mask_params, logger, tile_size, level, tx, ty, mask_colors_by_index)
             except AttributeError as e:
                 logger.error(f'{level} ty {ty} tx {tx}: {e}')
 
