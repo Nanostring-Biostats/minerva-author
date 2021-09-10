@@ -358,7 +358,7 @@ class Opener:
                             target[bool_tile] = mask_colors_by_index[ids[0]]
                     else:
                         # Handle masks that color cells individually
-                        print('filename: ', filename)
+                        # Shifts to account for 'all cells' mask, which doesn't have usable color info
                         for i in range(len(mask_colors_by_index) - 2):
                             bool_tile = np.isin(tile, i + 1)
                             if np.any(bool_tile):
@@ -372,7 +372,6 @@ class Opener:
                         'empty_file': empty_file
                     }
                 else:
-                    print('ids: ', ids, 'target: ', target)
                     img = Image.frombytes('RGBA', target.T.shape[1:], target.tobytes())
                     yield {
                         'img': img,
@@ -1423,7 +1422,6 @@ def api_render(session):
 
         # Render all uint32 segmentation masks
         for mask_params in mask_config_rows:
-            print('mask_params: ', mask_params)
             render_u32_tiles(mask_params, 1024, G['logger'])
 
         return 'OK'
