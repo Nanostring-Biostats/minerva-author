@@ -359,10 +359,10 @@ class Opener:
                     else:
                         # Handle masks that color cells individually
                         # Shifts to account for 'all cells' mask, which doesn't have usable color info
-                        for i in range(len(mask_colors_by_index) - 2):
-                            bool_tile = np.isin(tile, i + 1)
+                        for i in range(1, len(mask_colors_by_index)):
+                            bool_tile = np.isin(tile, i)
                             if np.any(bool_tile):
-                                target[bool_tile] = mask_colors_by_index[i+1]
+                                target[bool_tile] = mask_colors_by_index[i]
                         skip_empty_tile = False
 
                 if skip_empty_tile:
